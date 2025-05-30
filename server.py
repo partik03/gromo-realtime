@@ -12,9 +12,9 @@ from bot import run_bot
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import HTMLResponse,Response
-import base64
-import audioop
-import wave
+# import base64
+# import audioop
+# import wave
 from utils.helpers import create_sip_room
 app = FastAPI()
 
@@ -26,11 +26,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.post("/")
-async def start_call():
-    print("POST TwiML")
-    return HTMLResponse(content=open("templates/streams.xml").read(), media_type="application/xml")
 
 
 @app.get("/")
@@ -53,6 +48,39 @@ async def twilio_voice(request: Request):
     """
 
     return Response(content=twiml, media_type="text/xml")
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    try:
+        await websocket.accept()
+        print("WebSocket connection accepted")
+        start_data = websocket.iter_text()
+        await start_data.__anext__()
+        call_data = json.loads(await start_data.__anext__())
+        print(call_data, flush=True)
+        # stream_sid = call_data["start"]["stream_sid"]
+        stream_sid = call_data["stream_sid"]
+        await run_bot(websocket, stream_sid)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        await websocket.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Pipecat Twilio Chatbot Server")
+    parser.add_argument(
+        "-t", "--test", action="store_true", default=False, help="set the server in testing mode"
+    )
+    args, _ = parser.parse_known_args()
+
+    app.state.testing = args.test
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
 
 # @app.websocket("/ws")
 # async def websocket_endpoint(websocket: WebSocket):
@@ -132,36 +160,4 @@ async def twilio_voice(request: Request):
 
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    try:
-        await websocket.accept()
-        print("WebSocket connection accepted")
-        start_data = websocket.iter_text()
-        await start_data.__anext__()
-        call_data = json.loads(await start_data.__anext__())
-        print(call_data, flush=True)
-        # stream_sid = call_data["start"]["stream_sid"]
-        stream_sid = call_data["stream_sid"]
-        # room_url, token, sip_endpoint = await create_sip_room()
-        # print(f"Room URL: {room_url}, Token: {token}, SIP Endpoint: {sip_endpoint}")
-        # await run_bot(websocket, room_url, token, sip_endpoint)
-        await run_bot(websocket, stream_sid)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        await websocket.close()
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pipecat Twilio Chatbot Server")
-    parser.add_argument(
-        "-t", "--test", action="store_true", default=False, help="set the server in testing mode"
-    )
-    args, _ = parser.parse_known_args()
-
-    app.state.testing = args.test
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-    # await run_bot(websocket, stream_sid, call_sid, app.state.testing)
-    # await run_bot(websocket, app.state.testing)

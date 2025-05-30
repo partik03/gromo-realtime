@@ -12,6 +12,14 @@ from loguru import logger
 from groq import AsyncGroq
 from pydantic import BaseModel, Field
 
+
+from openai import AsyncStream
+from openai.types.chat import ChatCompletionChunk
+from openai.types.completion_usage import CompletionUsage
+
+from fastapi import WebSocket
+
+
 from pipecat.frames.frames import (
     Frame,
     LLMFullResponseEndFrame,
@@ -58,6 +66,8 @@ class BaseOpenAILLMService(LLMService):
         project=None,
         default_headers: Optional[Mapping[str, str]] = None,
         params: Optional[InputParams] = None,
+        stream: bool = False,
+        websocket: WebSocket = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -74,6 +84,8 @@ class BaseOpenAILLMService(LLMService):
             "max_completion_tokens": params.max_completion_tokens,
             "extra": params.extra if isinstance(params.extra, dict) else {},
         }
+        self._stream = stream
+        self._websocket = websocket
         self.set_model_name(model)
         self._client = self.create_client(
             api_key=api_key,
@@ -102,13 +114,25 @@ class BaseOpenAILLMService(LLMService):
     def can_generate_metrics(self) -> bool:
         return True
 
+    async def send_to_websocket(self, content: str):
+        """Send content to the LLM WebSocket"""
+        if self.websocket:
+            try:
+                await self.websocket.send_json({
+                    "type": "llm_response",
+                    "content": content
+                })
+            except Exception as e:
+                print(f"Failed to send to LLM WebSocket: {e}")
+
+
     async def get_chat_completions(
         self, context: OpenAILLMContext, messages: List[Dict[str, Any]]
-    ):
+    ) -> AsyncStream[ChatCompletionChunk]:
         params = {
             "model": self.model_name,
             "messages": messages,
-            "stream": True,
+            "stream": False,  # Get complete response
             "temperature": self._settings["temperature"],
             "top_p": self._settings["top_p"],
             "max_tokens": self._settings["max_tokens"],
@@ -116,17 +140,60 @@ class BaseOpenAILLMService(LLMService):
 
         params.update(self._settings["extra"])
 
+        # Get complete response
         response = await self._client.chat.completions.create(**params)
-        return response
+        print(f"RESPONSE: {response}")
+        if self._stream:
+            await self.send_to_websocket(response.choices[0].message.content)
+        # Create a simulated stream that matches AsyncStream[ChatCompletionChunk]
+        return self._create_simulated_stream(response)
 
     async def _stream_chat_completions(
         self, context: OpenAILLMContext
-    ):
+    ) -> AsyncStream[ChatCompletionChunk]:
         logger.debug(f"{self}: Generating chat [{context.get_messages_for_logging()}]")
         messages = context.get_messages()
-        response = await self.get_chat_completions(context, messages)
-        return response
+        return await self.get_chat_completions(context, messages)
 
+    def _create_simulated_stream(self, response) -> AsyncStream[ChatCompletionChunk]:
+        """Create a simulated stream from the complete response that matches AsyncStream[ChatCompletionChunk]."""
+        class SimulatedStream:
+            def __init__(self, response):
+                self.content = response.choices[0].message.content
+                self.current_pos = 0
+                self.chunk_size = 10  # Adjust chunk size as needed
+                self.usage = CompletionUsage(
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                    total_tokens=response.usage.total_tokens
+                ) if response.usage else None
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self) -> ChatCompletionChunk:
+                if self.current_pos >= len(self.content):
+                    raise StopAsyncIteration
+                
+                # Get next chunk
+                chunk = self.content[self.current_pos:self.current_pos + self.chunk_size]
+                self.current_pos += self.chunk_size
+                
+                # Create a ChatCompletionChunk-like object
+                return ChatCompletionChunk(
+                    id=response.id,
+                    choices=[{
+                        "delta": {"content": chunk},
+                        "finish_reason": None if self.current_pos < len(self.content) else "stop",
+                        "index": 0
+                    }],
+                    created=response.created,
+                    model=response.model,
+                    object="chat.completion.chunk",
+                    usage=self.usage if self.current_pos >= len(self.content) else None
+                )
+
+        return SimulatedStream(response)
     @traced_llm
     async def _process_context(self, context: OpenAILLMContext):
         functions_list = []

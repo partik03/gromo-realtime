@@ -106,34 +106,7 @@ async def run_bot(websocket_client, stream_sid):
     )
 
     # llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o-mini")
-    llm = OpenAILLMService(api_key=os.getenv("GROQ_API_KEY"), model="meta-llama/llama-4-maverick-17b-128e-instruct")
-
-    # Add connection monitoring
-    # stt = DeepgramSTTService(
-    #     api_key=os.getenv("DEEPGRAM_API_KEY"),
-    #     audio_passthrough=True,
-    #     sample_rate=8000,  # Match Exotel's sample rate
-    #     params=LiveOptions(
-    #         language="hi",
-    #         model="nova-3",
-    #         interim_results=True,
-    #         smart_format=True,
-    #         endpointing=300,    # Increase timeout (milliseconds)
-    #     )
-    # )
-        # params=Live(
-        #     language="en",
-        #     model="nova-2",
-        #     interim_results=True,
-        #     smart_format=True,
-        #     endpointing=300,    # Increase timeout (milliseconds)
-        #     utterance_end_ms=1000,  # How long to wait before ending utterance
-        # )
-    # tts = ElevenLabsTTSService(
-    #     api_key=os.getenv("ELEVEN_API_KEY"),
-    #     voice_id="G17SuINrv2H9FC6nvetn",
-    # )
-
+    llm = OpenAILLMService(api_key=os.getenv("GROQ_API_KEY"), model="meta-llama/llama-4-maverick-17b-128e-instruct", websocket=websocket_client, stream=True)
 
     stt = OpenAISTTService(
         api_key=os.getenv("OPENAI_API_KEY"),
