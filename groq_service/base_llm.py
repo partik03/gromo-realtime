@@ -11,7 +11,10 @@ import httpx
 from loguru import logger
 from groq import AsyncGroq
 from pydantic import BaseModel, Field
+from websocket_manager import websocket_manager  # Import the websocket manager from the new module
 
+
+import time
 
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
@@ -67,7 +70,6 @@ class BaseOpenAILLMService(LLMService):
         default_headers: Optional[Mapping[str, str]] = None,
         params: Optional[InputParams] = None,
         stream: bool = False,
-        websocket: WebSocket = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -85,7 +87,7 @@ class BaseOpenAILLMService(LLMService):
             "extra": params.extra if isinstance(params.extra, dict) else {},
         }
         self._stream = stream
-        self._websocket = websocket
+        self._websocket_manager = websocket_manager
         self.set_model_name(model)
         self._client = self.create_client(
             api_key=api_key,
@@ -120,7 +122,7 @@ class BaseOpenAILLMService(LLMService):
             try:
                 await self.websocket.send_json({
                     "type": "llm_response",
-                    "content": content
+                    "content": content.choices[0].message.content
                 })
             except Exception as e:
                 print(f"Failed to send to LLM WebSocket: {e}")
@@ -142,9 +144,9 @@ class BaseOpenAILLMService(LLMService):
 
         # Get complete response
         response = await self._client.chat.completions.create(**params)
-        print(f"RESPONSE: {response}")
+        # print(f"RESPONSE: {response}")
         if self._stream:
-            await self.send_to_websocket(response.choices[0].message.content)
+            await self._websocket_manager.send_to_frontend({"type": "llm_response","content": response.choices[0].message.content,"timestamp": time.time()})
         # Create a simulated stream that matches AsyncStream[ChatCompletionChunk]
         return self._create_simulated_stream(response)
 

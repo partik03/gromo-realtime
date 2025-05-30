@@ -106,7 +106,7 @@ async def run_bot(websocket_client, stream_sid):
     )
 
     # llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o-mini")
-    llm = OpenAILLMService(api_key=os.getenv("GROQ_API_KEY"), model="meta-llama/llama-4-maverick-17b-128e-instruct", websocket=websocket_client, stream=True)
+    llm = OpenAILLMService(api_key=os.getenv("GROQ_API_KEY"), model="meta-llama/llama-4-maverick-17b-128e-instruct", stream=True)
 
     stt = OpenAISTTService(
         api_key=os.getenv("OPENAI_API_KEY"),

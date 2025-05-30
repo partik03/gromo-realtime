@@ -15,6 +15,7 @@ from starlette.responses import HTMLResponse,Response
 # import base64
 # import audioop
 # import wave
+from websocket_manager import websocket_manager
 from utils.helpers import create_sip_room
 app = FastAPI()
 
@@ -54,18 +55,59 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         await websocket.accept()
         print("WebSocket connection accepted")
+        
+        # Wait for initial message
         start_data = websocket.iter_text()
+        print("🟢 Waiting for initial message", start_data)
         await start_data.__anext__()
         call_data = json.loads(await start_data.__anext__())
-        print(call_data, flush=True)
-        # stream_sid = call_data["start"]["stream_sid"]
-        stream_sid = call_data["stream_sid"]
-        await run_bot(websocket, stream_sid)
+        print(f"Received connection data: {call_data}", flush=True)
+        
+        # Handle different types of connections
+        if "stream_sid" in call_data:
+            # This is the media stream connection
+            stream_sid = call_data["stream_sid"]
+            websocket_manager.add_stream(stream_sid, websocket)
+            try:
+                # Get active frontend client
+                frontend_client_id = websocket_manager.get_active_frontend_client()
+                # if frontend_client_id:
+                await run_bot(websocket, stream_sid)
+                # else:
+                #     print("No active frontend client found")
+            except Exception as e:
+                print(f"Error in run_bot: {e}")
+            finally:
+                websocket_manager.remove_stream(stream_sid)
+                
+        elif "client_type" in call_data and call_data["client_type"] == "frontend":
+            print("🟢 Frontend connection received", call_data)
+            # This is the frontend connection
+            client_id = call_data.get("client_id")
+            if not client_id:
+                print("No client_id provided for frontend client")
+                return
+                
+            websocket_manager.add_frontend_client(client_id, websocket)
+            
+            try:
+                while True:
+                    try:
+                        data = await websocket.receive_text()
+                        print(f"Received message from frontend client {client_id}: {data}")
+                    except:
+                        print(f"Frontend client {client_id} disconnected")
+                        break
+            finally:
+                websocket_manager.remove_frontend_client(client_id)
+                
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
-        await websocket.close()
-
+        try:
+            await websocket.close()
+        except:
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pipecat Twilio Chatbot Server")
