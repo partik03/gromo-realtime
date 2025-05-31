@@ -1,0 +1,3 @@
+Requirement already satisfied: uvicorn in ./venv/lib/python3.11/site-packages (0.34.2)
+Requirement already satisfied: click>=7.0 in ./venv/lib/python3.11/site-packages (from uvicorn) (8.2.1)
+Requirement already satisfied: h11>=0.8 in ./venv/lib/python3.11/site-packages (from uvicorn) (0.16.0)

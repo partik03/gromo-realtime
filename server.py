@@ -6,7 +6,7 @@
 
 import argparse
 import json
-
+# import hypercorn
 import uvicorn
 from bot import run_bot
 from fastapi import FastAPI, WebSocket, Request
@@ -27,6 +27,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.websocket_keepalive = True
+app.websocket_ping_interval = 60.0  # Send ping every 20 seconds
+app.websocket_ping_timeout = 600.0 
 
 
 @app.get("/")
@@ -55,7 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         await websocket.accept()
         print("WebSocket connection accepted")
-        
+        # websocket.
         # Wait for initial message
         start_data = websocket.iter_text()
         print("🟢 Waiting for initial message", start_data)
@@ -109,17 +112,46 @@ async def websocket_endpoint(websocket: WebSocket):
         except:
             pass
 
+# if __name__ == "__main__":
+#     import hypercorn.asyncio
+#     import hypercorn.config
+#     import asyncio
+    
+#     config = hypercorn.config.Config()
+#     config.bind = ["0.0.0.0:8000"]
+    
+#     # CRITICAL: Set to None (not 0) to completely disable
+#     config.websocket_ping_interval = 0
+#     config.websocket_ping_timeout = 0
+#     config.keep_alive_timeout = 0
+    
+#     # Disable all timeouts
+#     config.graceful_timeout = 0
+#     config.shutdown_timeout = 0
+    
+#     asyncio.run(hypercorn.asyncio.serve(app, config))
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pipecat Twilio Chatbot Server")
-    parser.add_argument(
-        "-t", "--test", action="store_true", default=False, help="set the server in testing mode"
-    )
-    args, _ = parser.parse_known_args()
-
-    app.state.testing = args.test
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+    try:
+        uvicorn.run(
+            "server:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=True,
+            ws="websockets",
+            ws_ping_interval=30.0,    # Disable ping
+            ws_ping_timeout=60.0,     # Disable ping timeout
+        )
+    except TypeError:
+            # Fallback for older Uvicorn versions
+            print("WebSocket ping configuration not supported in this Uvicorn version")
+            print("Consider upgrading Uvicorn or using Hypercorn")
+            uvicorn.run(
+                "main:app",
+                host="0.0.0.0",
+                port=8000,
+                log_level="info"
+            )
 
 
 

@@ -38,6 +38,10 @@ import io
 import datetime
 import aiofiles
 # from pipecat.observers.loggers.debug_log_observer import DebugLogObserver
+import time 
+
+connection_start_time = None
+
 
 
 
@@ -76,15 +80,15 @@ async def run_bot(websocket_client, stream_sid):
         default_sound="office",
         volume=1.0,
     )
-    audiobuffer = AudioBufferProcessor(
-        sample_rate=8000,  # Match Exotel's sample rate
-        num_channels=1,    # Mono audio
-        buffer_size=0,     # Size in bytes to trigger buffer callbacks
-        audio_in_passthrough=True,  # Pass through the audio without modification
-        resample=False,  # Disable resampling
-        accumulate=False,  # Disable accumulation
-        max_buffer_size=0  # No maximum buffer size
-    )
+    # audiobuffer = AudioBufferProcessor(
+    #     sample_rate=8000,  # Match Exotel's sample rate
+    #     num_channels=1,    # Mono audio
+    #     buffer_size=0,     # Size in bytes to trigger buffer callbacks
+    #     audio_in_passthrough=True,  # Pass through the audio without modification
+    #     resample=False,  # Disable resampling
+    #     accumulate=False,  # Disable accumulation
+    #     max_buffer_size=0  # No maximum buffer size
+    # )
 
     transport = FastAPIWebsocketTransport(
         websocket=websocket_client,
@@ -123,19 +127,17 @@ async def run_bot(websocket_client, stream_sid):
     messages = [
         {
             "role": "system",
-            "content": "You are an AI assistant analyzing a live Hindi call between a GroMo Partner (field agent) and a GroMo Sales Agent (trainer/support). "
-    "Given the following transcript chunk, analyze the conversation and provide:\n\n"
-    "1. Who is speaking more in this segment: Partner or Agent?\n"
-    "2. What is the confidence level of the Partner? (Low / Medium / High) — justify in 1 line.\n"
-    "3. Is the Partner confused or asking repetitive questions? (Yes/No) — give short reason.\n"
-    "4. Is the Agent being clear and helpful? (Yes/No)\n"
-    "5. What is the Partner's main concern or question? (intent)\n"
-    "6. Was any resolution or next action offered? (Yes/No)\n"
-    "7. Suggest 1 short training topic the Partner needs help with.\n"
-    "8. 💬 What should the Agent say next to help the Partner understand better? Write a 1-line example response in Hindi.\n"
-    "9. ❓ What should the Agent ask next to keep the conversation moving forward? Give a 1-line question in Hindi.\n"
-    "10. Confidence score (0–100) of your analysis.\n\n"
-    "Transcript:\n",
+            "content":
+    "You are an on-screen AI sales copilot for a GroMo Sales Agent during a live Hindi call with a GroMo Partner.\n"
+    "From the transcript chunk below, reply in plain text only (no headings):\n\n"
+    "• Next Action Steps – 2-3 crisp bullets telling the Agent exactly what to do/say next.\n"
+    "• Sentiment Score – one number (0-100) showing how positively the call is trending toward a close.\n"
+    "• Neutrality Emoji – a single emoji that reflects the overall tone (e.g. 😐, 🙂, 🙁, 🤔).\n"
+    "• Objection Radar – if the Partner raises or hints at an objection, output:\n"
+    "    Objection: <short phrase>\n"
+    "    Rebuttal Cue: <one-line counter>\n"
+    "  If no objection detected, simply write: No clear objection yet.\n\n"
+    "Transcript:\n"
         },
     ]
     context = OpenAILLMContext(messages)
@@ -148,7 +150,7 @@ async def run_bot(websocket_client, stream_sid):
             transport.input(),  # Websocket input from client
             stt,  # Speech-To-Text
             transcript.user(),
-            audiobuffer,
+            # audiobuffer,
             context_aggregator.user(),
             llm,  # LLM
             # tts,  # Text-To-Speech
@@ -169,17 +171,26 @@ async def run_bot(websocket_client, stream_sid):
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
+        global connection_start_time
+        connection_start_time = time.time()
         logger.info("Client connected successfully")
+        
         # Kick off the conversation.
         # messages.append(
         #     {"role": "system", "content": "Please introduce yourself to the user."}
         # )
-        await audiobuffer.start_recording()
+        # await audiobuffer.start_recording()
         await task.queue_frames([context_aggregator.user().get_context_frame()])
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
-        await audiobuffer.stop_recording()
+        # await audiobuffer.stop_recording()
+        global connection_start_time
+        if connection_start_time:
+            duration = time.time() - connection_start_time
+            logger.error(f"🟢 Client disconnected after {duration:.2f} seconds")
+        else:
+            logger.error("🟢 Client disconnected (no start time recorded)")
         await task.cancel()
     
     async def save_audio(audio: bytes, sample_rate: int, num_channels: int):
@@ -202,10 +213,10 @@ async def run_bot(websocket_client, stream_sid):
             print(f"Merged audio saved to {filename}")
 
     # Handle the recorded audio chunks
-    @audiobuffer.event_handler("on_audio_data")
-    async def on_audio_data(buffer, audio, sample_rate, num_channels):
-        logger.info(f"Audio data received: {len(audio)} bytes at {sample_rate} Hz with {num_channels} channels")
-        await save_audio(audio, sample_rate, num_channels)
+    # @audiobuffer.event_handler("on_audio_data")
+    # async def on_audio_data(buffer, audio, sample_rate, num_channels):
+    #     logger.info(f"Audio data received: {len(audio)} bytes at {sample_rate} Hz with {num_channels} channels")
+    #     await save_audio(audio, sample_rate, num_channels)
 
     runner = PipelineRunner(handle_sigint=False)
 
