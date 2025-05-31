@@ -146,7 +146,8 @@ class BaseOpenAILLMService(LLMService):
         response = await self._client.chat.completions.create(**params)
         # print(f"RESPONSE: {response}")
         if self._stream:
-            time.sleep(1)
+            time.sleep(2)
+            logger.info(f"SENDING TO WEBSOCKET: {response.choices[0].message.content}")
             await self._websocket_manager.send_to_frontend({"event": "llm_response","content": response.choices[0].message.content,"timestamp": time.time()})
         # Create a simulated stream that matches AsyncStream[ChatCompletionChunk]
         return self._create_simulated_stream(response)

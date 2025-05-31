@@ -80,6 +80,7 @@ async def run_bot(websocket_client, stream_sid):
         default_sound="office",
         volume=1.0,
     )
+    # websocket_client
     # audiobuffer = AudioBufferProcessor(
     #     sample_rate=8000,  # Match Exotel's sample rate
     #     num_channels=1,    # Mono audio
@@ -128,16 +129,28 @@ async def run_bot(websocket_client, stream_sid):
         {
             "role": "system",
             "content":
-    "You are an on-screen AI sales copilot for a GroMo Sales Agent during a live Hindi call with a GroMo Partner.\n"
-    "From the transcript chunk below, reply in plain text only (no headings):\n\n"
-    "• Next Action Steps – 2-3 crisp bullets telling the Agent exactly what to do/say next.\n"
-    "• Sentiment Score – one number (0-100) showing how positively the call is trending toward a close.\n"
-    "• Neutrality Emoji – a single emoji that reflects the overall tone (e.g. 😐, 🙂, 🙁, 🤔).\n"
-    "• Objection Radar – if the Partner raises or hints at an objection, output:\n"
-    "    Objection: <short phrase>\n"
-    "    Rebuttal Cue: <one-line counter>\n"
-    "  If no objection detected, simply write: No clear objection yet.\n\n"
-    "Transcript:\n"
+    """You are an on-screen AI sales copilot for a GroMo Sales Agent during a live Hindi call with a GroMo Partner.
+
+From the transcript chunk below, respond ONLY with a JSON object (no extra text or explanation) containing:
+
+- next_action_steps: list of 2-3 crisp bullets telling the Agent exactly what to do/say next.
+- sentiment_score: a number (0-100) indicating how positively the call is trending toward a close.
+- neutrality_emoji: a single emoji reflecting the overall tone (e.g. 😐, 🙂, 🙁, 🤔).
+- objection_radar: if an objection is detected, output an object with:
+    - objection: short phrase summarizing the objection
+    - rebuttal_cue: one-line counter statement
+  If no objection is detected, set objection_radar to the string "No clear objection yet."
+
+Additional info: Here is mock data about one HDFC credit card for your reference:
+
+HDFC Regalia Credit Card:
+- Annual Fee: ₹2,500 (waived on spends above ₹3 lakhs per year)
+- Benefits: Airport lounge access, premium dining offers, reward points on spends
+- Eligibility: Minimum income ₹6 lakhs per annum
+
+Use this info to detect and handle any objections or queries related to HDFC Regalia Card.
+
+Transcript:"""
         },
     ]
     context = OpenAILLMContext(messages)
@@ -148,21 +161,22 @@ async def run_bot(websocket_client, stream_sid):
     pipeline = Pipeline(
         [
             transport.input(),  # Websocket input from client
-            stt,  # Speech-To-Text
-            transcript.user(),
+            # stt,  # Speech-To-Text
+            # transcript.user(),
             # audiobuffer,
-            context_aggregator.user(),
-            llm,  # LLM
+            # context_aggregator.user(),
+            # llm,  # LLM
             # tts,  # Text-To-Speech
             transport.output(),  # Websocket output to client
-            context_aggregator.assistant(),
-            transcript.assistant(),
+            # context_aggregator.assistant(),
+            # transcript.assistant(),
         ]
     )
 
-    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True, observers=[TranscriptionLogObserver()]))
+    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=False, observers=[TranscriptionLogObserver()]))
 
     handler = TranscriptHandler()
+
 
     @transcript.event_handler("on_transcript_update")
     async def on_update(processor, frame):

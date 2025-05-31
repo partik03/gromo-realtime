@@ -6,6 +6,8 @@
 
 import argparse
 import json
+import asyncio
+
 # import hypercorn
 import uvicorn
 from bot import run_bot
@@ -71,6 +73,9 @@ async def websocket_endpoint(websocket: WebSocket):
             # This is the media stream connection
             stream_sid = call_data["stream_sid"]
             websocket_manager.add_stream(stream_sid, websocket)
+            heartbeat_task = asyncio.create_task(
+                websocket_manager.start_heartbeat(websocket, stream_sid)
+            )
             try:
                 # Get active frontend client
                 frontend_client_id = websocket_manager.get_active_frontend_client()
@@ -81,6 +86,7 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as e:
                 print(f"Error in run_bot: {e}")
             finally:
+                heartbeat_task.cancel()
                 websocket_manager.remove_stream(stream_sid)
                 
         elif "client_type" in call_data and call_data["client_type"] == "frontend":
@@ -133,14 +139,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     try:
+        # uvicorn.run(
+        #     "server:app",
+        #     host="0.0.0.0",
+        #     port=8000,
+        #     reload=True,
+        #     ws="websockets",
+        #     ws_ping_interval=30.0,    # Disable ping
+        #     ws_ping_timeout=60.0,     # Disable ping timeout
+        # )
         uvicorn.run(
             "server:app",
             host="0.0.0.0",
             port=8000,
             reload=True,
             ws="websockets",
-            ws_ping_interval=30.0,    # Disable ping
-            ws_ping_timeout=60.0,     # Disable ping timeout
+            ws_ping_interval=None,  # ✅ Disable pinging
+            ws_ping_timeout=None,   # ✅ Disable ping timeout
         )
     except TypeError:
             # Fallback for older Uvicorn versions
